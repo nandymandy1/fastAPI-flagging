@@ -1,3 +1,4 @@
+from pydantic_core import PydanticCustomError
 from typing import Self
 from pydantic import model_validator
 from datetime import datetime
@@ -11,6 +12,7 @@ from pydantic import (
     field_validator,
 )
 
+from app.constants.rule_constants import HIGH_AMOUNT_THRESHOLDS
 
 Currency = Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")]
 Identifier = Annotated[
@@ -33,6 +35,17 @@ class TransactionDto(BaseModel):
     def validate_timestamp(cls, value: datetime):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Timestamp must include timezone information")
+        return value
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, value: str) -> str:
+        if value not in HIGH_AMOUNT_THRESHOLDS:
+            raise PydanticCustomError(
+                "UNSUPPORTED_CURRENCY",
+                "Currency is not supported",
+            )
+
         return value
 
 

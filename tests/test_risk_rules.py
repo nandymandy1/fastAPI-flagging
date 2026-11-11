@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
 from app.schemas import TransactionDto
 from app.services import check_high_amount
@@ -61,10 +62,9 @@ def test_high_amount_is_detected_for_each_supported_currency(currency: str):
 
 
 @pytest.mark.parametrize("currency", ["JPY", "XYZ"])
-def test_high_amount_ignores_unsupported_currencies(currency: str):
-    result = check_high_amount(make_transaction("99999999.99", currency))
-
-    assert result is None
+def test_unsupported_currencies_are_rejected(currency: str):
+    with pytest.raises(ValidationError, match="Currency is not supported"):
+        make_transaction("99999999.99", currency)
 
 
 @pytest.mark.parametrize("currency", HIGH_AMOUNT_THRESHOLDS)

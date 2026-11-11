@@ -1,9 +1,10 @@
 import logging
+from http import HTTPStatus
 
 from fastapi import FastAPI, Request
-from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import health_router, risk_router
 from app.config import get_settings
@@ -23,31 +24,80 @@ def error_response(
     code: str,
     message: str,
     status_code: int,
-    details: object | None = None,
+    details: list[dict[str, str]] | None = None,
 ) -> JSONResponse:
-    error = {"code": code, "message": message}
-    if details is not None:
-        error["details"] = jsonable_encoder(details)
-    return JSONResponse(status_code=status_code, content={"error": error})
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": {"code": code, "message": message, "details": details or []}},
+    )
 
 
 @app.exception_handler(AppError)
 def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
-    return error_response(exc.code, exc.message, exc.status_code, exc.details)
+    details = (
+        [
+            {key: detail[key] for key in ("field", "code", "message")}
+            for detail in exc.details
+            if isinstance(detail, dict)
+            and all(
+                isinstance(detail.get(key), str) for key in ("field", "code", "message")
+            )
+        ]
+        if isinstance(exc.details, list)
+        else []
+    )
+    return error_response(exc.code, exc.message, exc.status_code, details)
+
+
+def validation_field(location: tuple[object, ...]) -> str:
+    parts = location[1:] if location and location[0] == "body" else location
+    field = ""
+    for part in parts:
+        if isinstance(part, int):
+            field += f"[{part}]"
+        else:
+            field += f".{part}" if field else str(part)
+    return field or "request"
+
+
+def validation_details(exc: RequestValidationError) -> list[dict[str, str]]:
+    details = []
+    for error in exc.errors():
+        error_type = str(error["type"])
+        code = error_type.upper()
+        message = str(error["msg"])
+        if error_type.isupper() and code != "UNSUPPORTED_CURRENCY":
+            message = "Invalid value"
+        details.append(
+            {
+                "field": validation_field(tuple(error["loc"])),
+                "code": code,
+                "message": message,
+            }
+        )
+    return details
 
 
 @app.exception_handler(RequestValidationError)
 def handle_validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
-    details = [
-        {"loc": error["loc"], "msg": error["msg"], "type": error["type"]}
-        for error in exc.errors()
-    ]
     return error_response(
         "VALIDATION_ERROR",
         "Request validation failed",
         422,
-        details,
+        validation_details(exc),
     )
+
+
+@app.exception_handler(StarletteHTTPException)
+def handle_http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+    try:
+        status = HTTPStatus(exc.status_code)
+        code = status.name
+        message = status.phrase
+    except ValueError:
+        code = f"HTTP_{exc.status_code}"
+        message = "HTTP error"
+    return error_response(code, message, exc.status_code)
 
 
 @app.exception_handler(Exception)
