@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.dependencies import get_risk_analysis_service
@@ -105,6 +106,8 @@ def test_unexpected_errors_do_not_expose_internal_details():
             "details": [],
         }
     }
+    assert "database password leaked" not in response.text
+    assert "Traceback" not in response.text
 
 
 @pytest.mark.parametrize(
@@ -150,7 +153,7 @@ def test_validation_errors_have_readable_fields_and_codes(payload, field, code):
     )
 
 
-def test_custom_and_model_validation_errors_are_serialized():
+def test_duplicate_transaction_ids_use_the_custom_validation_error():
     client = TestClient(app)
     transaction = {
         "transaction_id": "duplicate",
@@ -167,9 +170,9 @@ def test_custom_and_model_validation_errors_are_serialized():
     assert response.status_code == 422
     assert response.json()["error"]["details"] == [
         {
-            "field": "request",
-            "code": "VALUE_ERROR",
-            "message": "Value error, All transaction IDs must be unique",
+            "field": "transactions",
+            "code": "DUPLICATE_TRANSACTION_ID",
+            "message": "Transaction IDs must be unique",
         }
     ]
 
@@ -232,6 +235,52 @@ def test_http_errors_use_the_standard_response_shape(method, path, status_code, 
         "error": {
             "code": code,
             "message": response.reason_phrase,
+            "details": [],
+        }
+    }
+
+
+def test_method_not_allowed_preserves_the_allow_header():
+    client = TestClient(app)
+
+    response = client.post("/api/v1/health/")
+
+    assert response.status_code == 405
+    assert response.headers["allow"] == "GET"
+
+
+def test_unauthorized_preserves_the_www_authenticate_header():
+    def raise_unauthorized():
+        raise HTTPException(
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    app.dependency_overrides[get_risk_analysis_service] = raise_unauthorized
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/risk/analyze",
+        json={
+            "transactions": [
+                {
+                    "transaction_id": "txn_001",
+                    "customer_id": "cust_101",
+                    "amount": "150.00",
+                    "currency": "USD",
+                    "merchant": "Amazon",
+                    "timestamp": "2026-11-11T10:00:00Z",
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+    assert response.json() == {
+        "error": {
+            "code": "UNAUTHORIZED",
+            "message": "Unauthorized",
             "details": [],
         }
     }

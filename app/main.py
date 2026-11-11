@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     version="0.1.0",
-    debug=settings.debug,
+    debug=False,
     title=settings.app_name,
 )
 
@@ -25,10 +25,18 @@ def error_response(
     message: str,
     status_code: int,
     details: list[dict[str, str]] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content={"error": {"code": code, "message": message, "details": details or []}},
+        headers=headers,
+        content={
+            "error": {
+                "code": code,
+                "message": message,
+                "details": details or [],
+            }
+        },
     )
 
 
@@ -66,8 +74,6 @@ def validation_details(exc: RequestValidationError) -> list[dict[str, str]]:
         error_type = str(error["type"])
         code = error_type.upper()
         message = str(error["msg"])
-        if error_type.isupper() and code != "UNSUPPORTED_CURRENCY":
-            message = "Invalid value"
         details.append(
             {
                 "field": validation_field(tuple(error["loc"])),
@@ -97,7 +103,7 @@ def handle_http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
     except ValueError:
         code = f"HTTP_{exc.status_code}"
         message = "HTTP error"
-    return error_response(code, message, exc.status_code)
+    return error_response(code, message, exc.status_code, headers=exc.headers)
 
 
 @app.exception_handler(Exception)

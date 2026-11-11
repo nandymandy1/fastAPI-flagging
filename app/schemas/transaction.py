@@ -1,6 +1,3 @@
-from pydantic_core import PydanticCustomError
-from typing import Self
-from pydantic import model_validator
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
@@ -11,6 +8,7 @@ from pydantic import (
     StringConstraints,
     field_validator,
 )
+from pydantic_core import PydanticCustomError
 
 from app.constants.rule_constants import HIGH_AMOUNT_THRESHOLDS
 
@@ -52,11 +50,15 @@ class TransactionDto(BaseModel):
 class AnalyzeTransactionsDto(BaseModel):
     transactions: list[TransactionDto] = Field(min_length=1, max_length=100)
 
-    @model_validator(mode="after")
-    def validate_unique_transactions(self) -> Self:
-        ids = [txn.transaction_id for txn in self.transactions]
-
-        has_duplicates = len(set(ids)) != len(ids)
-        if has_duplicates:
-            raise ValueError("All transaction IDs must be unique")
-        return self
+    @field_validator("transactions")
+    @classmethod
+    def validate_unique_transactions(
+        cls, transactions: list[TransactionDto]
+    ) -> list[TransactionDto]:
+        ids = [txn.transaction_id for txn in transactions]
+        if len(ids) != len(set(ids)):
+            raise PydanticCustomError(
+                "DUPLICATE_TRANSACTION_ID",
+                "Transaction IDs must be unique",
+            )
+        return transactions
