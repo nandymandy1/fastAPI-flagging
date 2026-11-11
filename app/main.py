@@ -6,9 +6,7 @@ app = FastAPI(
     description="Transaction risk monitoring API",
 )
 
+
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "service": "risk-monitor"
-    }
+    return {"status": "ok", "service": "risk-monitor"}
