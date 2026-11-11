@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.schemas.transaction import AnalyzeTransactionsDto
+
 from app.config import get_settings
 
 settings = get_settings()
