@@ -1,24 +1,29 @@
+from app.services.risk_rules import check_high_velocity
 from app.schemas.transaction import AnalyzeTransactionsDto
+from app.services.risk_rules import check_high_amount
 from app.schemas.risk import (
     RiskAnalysisResponseDto,
-    RiskSummaryDto,
     RiskFindingDto,
+    RiskSummaryDto,
 )
-
-from app.services.risk_rules import check_high_amount
 
 
 class RiskAnalysisService:
     def analyze(self, payload: AnalyzeTransactionsDto) -> RiskAnalysisResponseDto:
-
         findings: list[RiskFindingDto] = []
 
+        # 1. Transaction-level risk detection
         for transaction in payload.transactions:
             finding = check_high_amount(transaction)
 
             if finding is not None:
                 findings.append(finding)
 
+        # 2. Batch-level velocity detection
+        velocity_findings = check_high_velocity(payload.transactions)
+        findings.extend(velocity_findings)
+
+        # 3. Count unique flagged transactions
         flagged_ids = {finding.transaction_id for finding in findings}
 
         return RiskAnalysisResponseDto(

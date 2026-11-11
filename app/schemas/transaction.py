@@ -10,35 +10,21 @@ from pydantic import (
 )
 
 
+Currency = Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")]
 Identifier = Annotated[
-    str,
-    StringConstraints(min_length=1, max_length=100, strip_whitespace=True),
-]
-
-Currency = Annotated[
-    str,
-    StringConstraints(pattern=r"^[A-Z]{3}$"),
+    str, StringConstraints(min_length=1, max_length=100, strip_whitespace=True)
 ]
 
 
 class TransactionDto(BaseModel):
+    currency: Currency
+    timestamp: datetime
     customer_id: Identifier
     transaction_id: Identifier
-
-    amount: Decimal = Field(
-        gt=0,
-        max_digits=18,
-        decimal_places=2,
-    )
-
-    currency: Currency
-
+    amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
     merchant: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
     ]
-
-    timestamp: datetime
 
     @field_validator("timestamp")
     @classmethod
