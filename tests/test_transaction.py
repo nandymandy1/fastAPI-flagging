@@ -104,3 +104,32 @@ def test_no_risk_findings():
 
     assert data["summary"]["flagged_transactions"] == 0
     assert data["findings"] == []
+
+
+def test_duplicate_transaction_ids():
+    # Send two otherwise valid transactions with the same ID
+    response = client.post(
+        "/api/v1/risk/analyze",
+        json={
+            "transactions": [
+                {
+                    "transaction_id": "txn_001",
+                    "customer_id": "cust_101",
+                    "amount": "100.00",
+                    "currency": "USD",
+                    "merchant": "Amazon",
+                    "timestamp": "2026-11-11T10:00:00Z",
+                },
+                {
+                    "transaction_id": "txn_001",
+                    "customer_id": "cust_101",
+                    "amount": "200.00",
+                    "currency": "USD",
+                    "merchant": "Walmart",
+                    "timestamp": "2026-11-11T10:01:00Z",
+                },
+            ]
+        },
+    )
+
+    assert response.status_code == 422

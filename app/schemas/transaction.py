@@ -1,3 +1,5 @@
+from typing import Self
+from pydantic import model_validator
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
@@ -36,3 +38,12 @@ class TransactionDto(BaseModel):
 
 class AnalyzeTransactionsDto(BaseModel):
     transactions: list[TransactionDto] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_unique_transactions(self) -> Self:
+        ids = [txn.transaction_id for txn in self.transactions]
+
+        has_duplicates = len(set(ids)) != len(ids)
+        if has_duplicates:
+            raise ValueError("All transaction IDs must be unique")
+        return self
