@@ -1,0 +1,15 @@
+from fastapi import APIRouter
+from app.schemas.transaction import AnalyzeTransactionsDto
+from app.config import get_settings
+
+settings = get_settings()
+
+router = APIRouter(
+    prefix="/health",
+    tags=["Risk Monitor Health"],
+)
+
+
+@router.get("/")
+async def health():
+    return {"status": "ok", "service": settings.app_name}
