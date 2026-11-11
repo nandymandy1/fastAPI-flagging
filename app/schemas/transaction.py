@@ -12,24 +12,18 @@ from pydantic import (
 
 Identifier = Annotated[
     str,
-    StringConstraints(
-        min_length=1,
-        max_length=100,
-        strip_whitespace=True,
-    ),
+    StringConstraints(min_length=1, max_length=100, strip_whitespace=True),
 ]
 
 Currency = Annotated[
     str,
-    StringConstraints(
-        pattern=r"^[A-Z]{3}$",
-    ),
+    StringConstraints(pattern=r"^[A-Z]{3}$"),
 ]
 
 
 class TransactionDto(BaseModel):
-    transaction_id: Identifier
     customer_id: Identifier
+    transaction_id: Identifier
 
     amount: Decimal = Field(
         gt=0,
@@ -41,11 +35,7 @@ class TransactionDto(BaseModel):
 
     merchant: Annotated[
         str,
-        StringConstraints(
-            strip_whitespace=True,
-            min_length=1,
-            max_length=200,
-        ),
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
     ]
 
     timestamp: datetime
@@ -59,7 +49,4 @@ class TransactionDto(BaseModel):
 
 
 class AnalyzeTransactionsDto(BaseModel):
-    transactions: list[TransactionDto] = Field(
-        min_length=1,
-        max_length=100,
-    )
+    transactions: list[TransactionDto] = Field(min_length=1, max_length=100)

@@ -4,10 +4,7 @@ from app.config import get_settings
 
 settings = get_settings()
 
-router = APIRouter(
-    prefix="/health",
-    tags=["Risk Monitor Health"],
-)
+router = APIRouter(prefix="/health", tags=["App Health"])
 
 
 @router.get("/")
