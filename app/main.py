@@ -38,11 +38,15 @@ def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
 
 @app.exception_handler(RequestValidationError)
 def handle_validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    details = [
+        {"loc": error["loc"], "msg": error["msg"], "type": error["type"]}
+        for error in exc.errors()
+    ]
     return error_response(
         "VALIDATION_ERROR",
         "Request validation failed",
         422,
-        exc.errors(),
+        details,
     )
 
 

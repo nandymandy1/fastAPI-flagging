@@ -1,29 +1,27 @@
-from decimal import Decimal
-
 from collections import defaultdict
-from datetime import timedelta
-
 from app.schemas.transaction import TransactionDto
 from app.schemas.risk import RiskFindingDto, RiskLevel, RiskRuleCode
-
-
-MAX_TRANSACTION_COUNT_IN_WINDOW = 3
-HIGH_AMOUNT_THRESHOLD_USD = Decimal("10000.00")
-TRANSACTION_WINDOW_DURATION = timedelta(minutes=5)
+from app.constants import (
+    HIGH_AMOUNT_THRESHOLDS,
+    TRANSACTION_WINDOW_DURATION,
+    MAX_TRANSACTION_COUNT_IN_WINDOW,
+)
 
 
 def check_high_amount(transaction: TransactionDto) -> RiskFindingDto | None:
-    if transaction.currency != "USD":
-        return None
+    threshold = HIGH_AMOUNT_THRESHOLDS.get(transaction.currency)
 
-    if transaction.amount <= HIGH_AMOUNT_THRESHOLD_USD:
+    if threshold is None or transaction.amount <= threshold:
         return None
 
     return RiskFindingDto(
         risk_level=RiskLevel.HIGH,
         rule_code=RiskRuleCode.HIGH_AMOUNT,
         transaction_id=transaction.transaction_id,
-        reason=("Transaction amount exceeds the configured USD threshold"),
+        reason=(
+            "Transaction amount exceeds the configured "
+            f"{transaction.currency} threshold"
+        ),
     )
 
 
