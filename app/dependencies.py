@@ -2,19 +2,30 @@ from collections.abc import Callable
 from secrets import compare_digest
 from typing import Annotated
 
+import boto3
 from fastapi import Depends, Header, HTTPException, status
 from strands import Agent
 
 from app.config.config import Settings, get_settings
 from app.schemas.risk import RiskAnalysisResponseDto
-from app.services.risk_agent import create_risk_agent
-from app.services.risk_analysis import RiskAnalysisService
+from app.services import RiskAnalysisService, create_risk_agent, IdempotencyStore
 
 RiskAgentBuilder = Callable[[RiskAnalysisResponseDto], Agent]
 
 
 def get_risk_analysis_service() -> RiskAnalysisService:
     return RiskAnalysisService()
+
+
+def get_idempotency_store(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> IdempotencyStore | None:
+    if not settings.dynamodb_table_name or not settings.dynamodb_table_name.strip():
+        return None
+    table = boto3.resource("dynamodb", region_name=settings.aws_region).Table(
+        settings.dynamodb_table_name
+    )
+    return IdempotencyStore(table)
 
 
 def require_api_key(

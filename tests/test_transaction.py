@@ -1,7 +1,9 @@
+from unittest.mock import Mock
+
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies import require_api_key
+from app.dependencies import get_idempotency_store, require_api_key
 from app.main import app
 
 client = TestClient(app)
@@ -9,9 +11,16 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def bypass_authentication():
+    store = Mock()
+    store.get.return_value = None
+    store.reserve.return_value = {"reservation_id": "test-reservation"}
     app.dependency_overrides[require_api_key] = lambda: None
+    app.dependency_overrides[get_idempotency_store] = lambda: store
+    client.headers["Idempotency-Key"] = "test-key"
     yield
     app.dependency_overrides.pop(require_api_key, None)
+    app.dependency_overrides.pop(get_idempotency_store, None)
+    client.headers.pop("Idempotency-Key", None)
 
 
 def test_valid_transaction_batch():

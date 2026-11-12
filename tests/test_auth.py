@@ -1,9 +1,12 @@
+from unittest.mock import Mock
+
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from app.config.config import Settings, get_settings
 from app.dependencies import (
+    get_idempotency_store,
     get_risk_agent_builder,
     get_risk_analysis_service,
     require_api_key,
@@ -103,11 +106,18 @@ def test_api_keys_are_not_exposed_in_errors(auth_app):
 
 def test_valid_api_key_protects_the_risk_route(risk_client):
     configure_risk_api_key("configured-secret")
+    store = Mock()
+    store.get.return_value = None
+    store.reserve.return_value = {"reservation_id": "test-reservation"}
+    app.dependency_overrides[get_idempotency_store] = lambda: store
 
     response = risk_client.post(
         "/api/v1/risk/analyze",
         json=risk_payload(),
-        headers={"X-API-Key": "configured-secret"},
+        headers={
+            "X-API-Key": "configured-secret",
+            "Idempotency-Key": "test-key",
+        },
     )
 
     assert response.status_code == 200

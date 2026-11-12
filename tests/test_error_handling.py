@@ -1,18 +1,27 @@
 import json
+from unittest.mock import Mock
 
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app.dependencies import get_risk_analysis_service, require_api_key
+from app.dependencies import (
+    get_idempotency_store,
+    get_risk_analysis_service,
+    require_api_key,
+)
 from app.errors import AppError
 from app.main import app
 
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides():
+    store = Mock()
+    store.get.return_value = None
+    store.reserve.return_value = {"reservation_id": "test-reservation"}
     app.dependency_overrides.clear()
     app.dependency_overrides[require_api_key] = lambda: None
+    app.dependency_overrides[get_idempotency_store] = lambda: store
     yield
     app.dependency_overrides.clear()
 
@@ -274,6 +283,7 @@ def test_unauthorized_preserves_the_www_authenticate_header():
                 }
             ]
         },
+        headers={"Idempotency-Key": "test-key"},
     )
 
     assert response.status_code == 401
@@ -318,6 +328,7 @@ def test_risk_service_can_be_overridden():
                 }
             ]
         },
+        headers={"Idempotency-Key": "test-key"},
     )
 
     assert response.status_code == 200

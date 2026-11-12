@@ -5,7 +5,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config.config import Settings, get_settings
-from app.dependencies import get_risk_agent_builder, require_api_key
+from app.dependencies import (
+    get_idempotency_store,
+    get_risk_agent_builder,
+    require_api_key,
+)
 from app.main import app
 
 PAYLOAD = {
@@ -24,9 +28,13 @@ PAYLOAD = {
 
 @pytest.fixture(autouse=True)
 def restore_dependency_overrides():
+    store = Mock()
+    store.get.return_value = None
+    store.reserve.return_value = {"reservation_id": "test-reservation"}
     overrides = app.dependency_overrides.copy()
     app.dependency_overrides.clear()
     app.dependency_overrides[require_api_key] = lambda: None
+    app.dependency_overrides[get_idempotency_store] = lambda: store
     yield
     app.dependency_overrides.clear()
     app.dependency_overrides.update(overrides)
@@ -34,7 +42,7 @@ def restore_dependency_overrides():
 
 @pytest.fixture
 def client():
-    with TestClient(app) as test_client:
+    with TestClient(app, headers={"Idempotency-Key": "test-key"}) as test_client:
         yield test_client
 
 
