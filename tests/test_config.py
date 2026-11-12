@@ -1,3 +1,5 @@
+from pydantic import SecretStr
+
 from app.config.config import Settings
 
 
@@ -49,3 +51,29 @@ def test_api_and_dynamodb_environment_overrides(monkeypatch):
 
     assert settings.api_key == "test-api-key"
     assert settings.dynamodb_table_name == "test-risk-monitor"
+
+
+def test_default_webhook_configuration(monkeypatch):
+    for name in ("WEBHOOK_ENABLED", "WEBHOOK_URL", "WEBHOOK_SIGNING_SECRET"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.webhook_enabled is False
+    assert settings.webhook_url is None
+    assert settings.webhook_signing_secret is None
+
+
+def test_webhook_environment_overrides_keep_signing_secret_redacted(monkeypatch):
+    secret = "whsec_test_webhook_secret"
+    monkeypatch.setenv("WEBHOOK_ENABLED", "true")
+    monkeypatch.setenv("WEBHOOK_URL", "https://webhooks.example.test/risk")
+    monkeypatch.setenv("WEBHOOK_SIGNING_SECRET", secret)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.webhook_enabled is True
+    assert settings.webhook_url == "https://webhooks.example.test/risk"
+    assert isinstance(settings.webhook_signing_secret, SecretStr)
+    assert settings.webhook_signing_secret.get_secret_value() == secret
+    assert secret not in repr(settings.webhook_signing_secret)

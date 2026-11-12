@@ -6,9 +6,14 @@ import boto3
 from fastapi import Depends, Header, HTTPException, status
 from strands import Agent
 
-from app.config.config import Settings, get_settings
-from app.schemas.risk import RiskAnalysisResponseDto
-from app.services import IdempotencyStore, RiskAnalysisService, create_risk_agent
+from .config.config import Settings, get_settings
+from .schemas.risk import RiskAnalysisResponseDto
+from .services import (
+    IdempotencyStore,
+    RiskAnalysisService,
+    WebhookService,
+    create_risk_agent,
+)
 
 RiskAgentBuilder = Callable[[RiskAnalysisResponseDto], Agent]
 
@@ -52,3 +57,30 @@ def get_risk_agent_builder(
         )
 
     return build
+
+
+def get_webhook_service(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> WebhookService | None:
+    if not settings.webhook_enabled:
+        return None
+
+    secret = settings.webhook_signing_secret
+    if (
+        not settings.webhook_url
+        or not settings.webhook_url.strip()
+        or secret is None
+        or not secret.get_secret_value().strip()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Webhook service unavailable",
+        )
+
+    try:
+        return WebhookService(settings.webhook_url, secret.get_secret_value())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Webhook service unavailable",
+        ) from exc

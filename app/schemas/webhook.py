@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.risk import RiskFindingDto, RiskSummaryDto
+from .risk import RiskFindingDto, RiskSummaryDto
 
 
 class RiskWebhookDataDto(BaseModel):

@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +14,9 @@ class Settings(BaseSettings):
     bedrock_timeout_seconds: int = 60
     api_key: str | None = None
     dynamodb_table_name: str | None = None
+    webhook_enabled: bool = False
+    webhook_url: str | None = None
+    webhook_signing_secret: SecretStr | None = None
 
     model_config = SettingsConfigDict(
         extra="ignore",

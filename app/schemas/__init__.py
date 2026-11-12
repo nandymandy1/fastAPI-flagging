@@ -10,6 +10,7 @@ from .transaction import (
     Identifier,
     TransactionDto,
 )
+from .webhook import RiskWebhookDataDto, RiskWebhookEventDto
 
 __all__ = [
     "AnalyzeTransactionsDto",
@@ -19,5 +20,7 @@ __all__ = [
     "RiskFindingDto",
     "RiskLevel",
     "RiskSummaryDto",
+    "RiskWebhookDataDto",
+    "RiskWebhookEventDto",
     "TransactionDto",
 ]

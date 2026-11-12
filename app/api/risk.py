@@ -132,6 +132,7 @@ async def _add_ai_summary(
             analysis.ai_summary = summary
             analysis.ai_status = "generated"
             return
+
     except Exception:  # noqa: BLE001
         analysis.ai_status = "unavailable"
         return
