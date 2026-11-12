@@ -14,6 +14,7 @@ from app.dependencies import (
     require_api_key,
 )
 from app.schemas import (
+    AiAssessmentDto,
     AnalyzeTransactionsDto,
     RiskAnalysisResponseDto,
 )
@@ -38,7 +39,7 @@ async def analyze_transactions(
     idempotency_store: Annotated[
         IdempotencyStore | None, Depends(get_idempotency_store)
     ],
-    include_ai: bool = False,
+    include_ai: bool | None = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> RiskAnalysisResponseDto:
     if not idempotency_key or not IDEMPOTENCY_KEY_PATTERN.fullmatch(idempotency_key):
@@ -47,7 +48,8 @@ async def analyze_transactions(
     if idempotency_store is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-    request_hash = build_request_hash(payload, include_ai)
+    ai_requested = include_ai is not False
+    request_hash = build_request_hash(payload, ai_requested)
 
     try:
         existing = await asyncio.to_thread(idempotency_store.get, idempotency_key)
@@ -78,8 +80,8 @@ async def analyze_transactions(
 
     try:
         analysis = RiskAnalysisResponseDto.model_validate(service.analyze(payload))
-        if include_ai:
-            await _add_ai_summary(analysis, settings, agent_builder)
+        if ai_requested and (agent_builder is not None or include_ai is True):
+            await _add_ai_assessment(analysis, payload, settings, agent_builder)
 
     except Exception:
         with suppress(Exception):
@@ -105,8 +107,9 @@ async def analyze_transactions(
     return analysis
 
 
-async def _add_ai_summary(
+async def _add_ai_assessment(
     analysis: RiskAnalysisResponseDto,
+    payload: AnalyzeTransactionsDto,
     settings: Settings,
     agent_builder: RiskAgentBuilder | None,
 ) -> None:
@@ -116,20 +119,33 @@ async def _add_ai_summary(
 
     try:
         async with asyncio.timeout(settings.bedrock_timeout_seconds):
-            result = await agent_builder(analysis).invoke_async(
-                "Call get_verified_risk_findings before briefly explaining the "
-                "verified risk findings."
+            result = await agent_builder(payload, analysis).invoke_async(
+                "Call both tools, then provide an advisory contextual assessment."
             )
-        tool_metrics = result.metrics.tool_metrics.get("get_verified_risk_findings")
-        summary = str(result).strip()
+        findings_metrics = result.metrics.tool_metrics.get("get_verified_risk_findings")
+        transactions_metrics = result.metrics.tool_metrics.get(
+            "get_validated_transactions"
+        )
+        assessment = result.structured_output
+        valid_transaction_ids = {
+            transaction.transaction_id for transaction in payload.transactions
+        }
         if (
             result.stop_reason == "end_turn"
-            and tool_metrics
-            and tool_metrics.success_count > 0
-            and tool_metrics.error_count == 0
-            and summary
+            and findings_metrics
+            and findings_metrics.success_count > 0
+            and findings_metrics.error_count == 0
+            and transactions_metrics
+            and transactions_metrics.success_count > 0
+            and transactions_metrics.error_count == 0
+            and isinstance(assessment, AiAssessmentDto)
+            and all(
+                set(observation.transaction_ids) <= valid_transaction_ids
+                for observation in assessment.ai_observations
+            )
         ):
-            analysis.ai_summary = summary
+            analysis.ai_summary = assessment.ai_summary
+            analysis.ai_observations = assessment.ai_observations
             analysis.ai_status = "generated"
             return
 

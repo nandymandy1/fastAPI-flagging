@@ -8,6 +8,7 @@ from strands import Agent
 
 from .config.config import Settings, get_settings
 from .schemas.risk import RiskAnalysisResponseDto
+from .schemas.transaction import AnalyzeTransactionsDto
 from .services import (
     IdempotencyStore,
     RiskAnalysisService,
@@ -15,7 +16,7 @@ from .services import (
     create_risk_agent,
 )
 
-RiskAgentBuilder = Callable[[RiskAnalysisResponseDto], Agent]
+RiskAgentBuilder = Callable[[AnalyzeTransactionsDto, RiskAnalysisResponseDto], Agent]
 
 
 def get_risk_analysis_service() -> RiskAnalysisService:
@@ -39,6 +40,7 @@ def require_api_key(
 ) -> None:
     if not settings.api_key or not settings.api_key.strip():
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
     if not x_api_key or not compare_digest(x_api_key, settings.api_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
@@ -49,8 +51,12 @@ def get_risk_agent_builder(
     if not settings.bedrock_model_id or not settings.bedrock_model_id.strip():
         return None
 
-    def build(analysis: RiskAnalysisResponseDto) -> Agent:
+    def build(
+        payload: AnalyzeTransactionsDto,
+        analysis: RiskAnalysisResponseDto,
+    ) -> Agent:
         return create_risk_agent(
+            payload,
             analysis,
             settings.aws_region,
             settings.bedrock_model_id,

@@ -1,4 +1,7 @@
 from .risk import (
+    AiAssessmentDto,
+    AiObservationDto,
+    AiObservationPattern,
     RiskAnalysisResponseDto,
     RiskFindingDto,
     RiskLevel,
@@ -13,6 +16,9 @@ from .transaction import (
 from .webhook import RiskWebhookDataDto, RiskWebhookEventDto
 
 __all__ = [
+    "AiAssessmentDto",
+    "AiObservationDto",
+    "AiObservationPattern",
     "AnalyzeTransactionsDto",
     "Currency",
     "Identifier",

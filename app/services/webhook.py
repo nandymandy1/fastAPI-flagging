@@ -3,7 +3,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.schemas.webhook import RiskWebhookEventDto
-from app.utils import sign_webhook
+from app.utils.webhook_signing import sign_webhook, validate_webhook_secret
 
 
 class WebhookDeliveryError(Exception):
@@ -26,8 +26,7 @@ class WebhookService:
             or destination.fragment
         ):
             raise ValueError("Webhook URL must be an HTTPS URL without credentials")
-        if not secret or not secret.strip():
-            raise ValueError("Webhook secret must not be blank")
+        validate_webhook_secret(secret)
 
         self.url = url
         self.secret = secret

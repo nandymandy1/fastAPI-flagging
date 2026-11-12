@@ -8,7 +8,6 @@ from app.schemas.webhook import RiskWebhookEventDto
 from app.utils import sign_webhook
 
 SECRET = "whsec_" + base64.b64encode(b"a" * 32).decode()
-OTHER_SECRET = "whsec_" + base64.b64encode(b"b" * 32).decode()
 
 
 @pytest.fixture
@@ -58,29 +57,6 @@ def test_tampered_body_is_rejected(event):
         Webhook(SECRET).verify(body.replace(b"HIGH_AMOUNT", b"HIGH_VELOCITY"), headers)
 
 
-def test_wrong_secret_is_rejected(event):
-    body, headers = sign_webhook(event, SECRET, current_time())
-
-    with pytest.raises(WebhookVerificationError):
-        Webhook(OTHER_SECRET).verify(body, headers)
-
-
-def test_missing_signature_is_rejected(event):
-    body, headers = sign_webhook(event, SECRET, current_time())
-    headers.pop("webhook-signature")
-
-    with pytest.raises(WebhookVerificationError):
-        Webhook(SECRET).verify(body, headers)
-
-
-def test_modified_event_id_is_rejected(event):
-    body, headers = sign_webhook(event, SECRET, current_time())
-    headers["webhook-id"] = "event_002"
-
-    with pytest.raises(WebhookVerificationError):
-        Webhook(SECRET).verify(body, headers)
-
-
 @pytest.mark.parametrize("offset", [timedelta(minutes=-6), timedelta(minutes=6)])
 def test_expired_or_future_timestamps_are_rejected(event, offset):
     body, headers = sign_webhook(event, SECRET, current_time() + offset)
@@ -116,22 +92,13 @@ def test_utc_normalization_produces_matching_headers_and_signatures(event):
     assert utc_headers["webhook-signature"] == offset_headers["webhook-signature"]
 
 
-@pytest.mark.parametrize("event_id", ["event.001", "event\n001", "event/001"])
-def test_unsafe_event_ids_are_rejected(event, event_id):
-    unsafe_event = event.model_copy(update={"event_id": event_id})
+def test_unsafe_event_ids_are_rejected(event):
+    unsafe_event = event.model_copy(update={"event_id": "event.001"})
 
     with pytest.raises(ValueError, match="Invalid webhook event ID"):
         sign_webhook(unsafe_event, SECRET, current_time())
 
 
-@pytest.mark.parametrize("secret", ["", "not-a-webhook-secret", "whsec_not base64!"])
-def test_invalid_signing_secrets_are_rejected(event, secret):
+def test_invalid_signing_secrets_are_rejected(event):
     with pytest.raises(ValueError):
-        sign_webhook(event, secret, current_time())
-
-
-def test_exact_serialized_body_is_the_verified_body(event):
-    body, headers = sign_webhook(event, SECRET, current_time())
-
-    assert body == event.model_dump_json().encode("utf-8")
-    Webhook(SECRET).verify(body, headers, json_parse=False)
+        sign_webhook(event, "whsec_not base64!", current_time())

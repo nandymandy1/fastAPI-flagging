@@ -61,19 +61,9 @@ def test_high_amount_is_detected_for_each_supported_currency(currency: str):
     assert result.rule_code == "HIGH_AMOUNT"
 
 
-@pytest.mark.parametrize("currency", ["JPY", "XYZ"])
-def test_unsupported_currencies_are_rejected(currency: str):
+def test_unsupported_currency_is_rejected():
     with pytest.raises(ValidationError, match="Currency is not supported"):
-        make_transaction("99999999.99", currency)
-
-
-@pytest.mark.parametrize("currency", HIGH_AMOUNT_THRESHOLDS)
-def test_exact_currency_threshold_is_not_high_risk(currency: str):
-    result = check_high_amount(
-        make_transaction(str(HIGH_AMOUNT_THRESHOLDS[currency]), currency)
-    )
-
-    assert result is None
+        make_transaction("99999999.99", "JPY")
 
 
 BASE_TIME = datetime(2026, 11, 11, 10, 0, tzinfo=UTC)

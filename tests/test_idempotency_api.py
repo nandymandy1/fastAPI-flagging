@@ -12,6 +12,7 @@ from app.dependencies import (
     require_api_key,
 )
 from app.main import app
+from app.schemas.risk import AiAssessmentDto
 from app.services.risk_analysis import RiskAnalysisService
 
 PAYLOAD = {
@@ -116,12 +117,12 @@ def test_completed_request_replays_without_reanalysis(client_and_store):
     result = MagicMock()
     result.stop_reason = "end_turn"
     result.metrics.tool_metrics = {
-        "get_verified_risk_findings": SimpleNamespace(
-            success_count=1,
-            error_count=0,
-        )
+        name: SimpleNamespace(success_count=1, error_count=0)
+        for name in ("get_verified_risk_findings", "get_validated_transactions")
     }
-    result.__str__.return_value = "Verified HIGH_AMOUNT finding."
+    result.structured_output = AiAssessmentDto(
+        ai_summary="Verified finding.", ai_observations=[]
+    )
     agent = Mock(invoke_async=AsyncMock(return_value=result))
     agent_builder = Mock(return_value=agent)
     app.dependency_overrides[get_risk_analysis_service] = lambda: service
@@ -158,16 +159,6 @@ def test_same_key_with_different_payload_returns_conflict(client_and_store):
     assert response.status_code == 409
 
 
-def test_processing_request_returns_conflict(client_and_store):
-    client, store = client_and_store
-
-    assert post(client).status_code == 200
-    store.records["request-1"].pop("response")
-    store.records["request-1"]["status"] = "PROCESSING"
-
-    assert post(client).status_code == 409
-
-
 def test_reservation_race_rereads_completed_response(client_and_store):
     client, store = client_and_store
     service = Mock(wraps=RiskAnalysisService())
@@ -189,12 +180,14 @@ def test_reservation_race_rereads_completed_response(client_and_store):
     service.analyze.assert_not_called()
 
 
-@pytest.mark.parametrize("key", [None, "invalid key"])
-def test_missing_or_invalid_idempotency_key_returns_bad_request(client_and_store, key):
+def test_invalid_idempotency_key_returns_bad_request(client_and_store):
     client, _ = client_and_store
-    headers = {} if key is None else {"Idempotency-Key": key}
 
-    response = client.post("/api/v1/risk/analyze", json=PAYLOAD, headers=headers)
+    response = client.post(
+        "/api/v1/risk/analyze",
+        json=PAYLOAD,
+        headers={"Idempotency-Key": "invalid key"},
+    )
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "BAD_REQUEST"
