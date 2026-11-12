@@ -8,7 +8,7 @@ from strands import Agent
 
 from app.config.config import Settings, get_settings
 from app.schemas.risk import RiskAnalysisResponseDto
-from app.services import RiskAnalysisService, create_risk_agent, IdempotencyStore
+from app.services import IdempotencyStore, RiskAnalysisService, create_risk_agent
 
 RiskAgentBuilder = Callable[[RiskAnalysisResponseDto], Agent]
 

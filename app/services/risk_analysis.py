@@ -1,11 +1,10 @@
-from app.services.risk_rules import check_high_velocity
-from app.schemas.transaction import AnalyzeTransactionsDto
-from app.services.risk_rules import check_high_amount
 from app.schemas.risk import (
     RiskAnalysisResponseDto,
     RiskFindingDto,
     RiskSummaryDto,
 )
+from app.schemas.transaction import AnalyzeTransactionsDto
+from app.services.risk_rules import check_high_amount, check_high_velocity
 
 
 class RiskAnalysisService:

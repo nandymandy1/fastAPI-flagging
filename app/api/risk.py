@@ -6,7 +6,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from app.config.config import Settings, get_settings
-
 from app.dependencies import (
     RiskAgentBuilder,
     get_idempotency_store,
@@ -19,7 +18,6 @@ from app.schemas import (
     RiskAnalysisResponseDto,
 )
 from app.services import IdempotencyStore, RiskAnalysisService
-
 from app.utils import build_request_hash, load_stored_response
 
 router = APIRouter(prefix="/risk", tags=["Risk Monitor"])

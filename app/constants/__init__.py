@@ -1,4 +1,4 @@
-from app.constants.rule_constants import (
+from .rule_constants import (
     HIGH_AMOUNT_THRESHOLD_USD,
     HIGH_AMOUNT_THRESHOLDS,
     MAX_TRANSACTION_COUNT_IN_WINDOW,

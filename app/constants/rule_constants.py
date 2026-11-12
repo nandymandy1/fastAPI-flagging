@@ -1,7 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
 
-
 HIGH_AMOUNT_THRESHOLDS = {
     "USD": Decimal("10000.00"),
     "INR": Decimal("1000000.00"),

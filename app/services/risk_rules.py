@@ -1,11 +1,12 @@
 from collections import defaultdict
-from app.schemas.transaction import TransactionDto
-from app.schemas.risk import RiskFindingDto, RiskLevel, RiskRuleCode
+
 from app.constants import (
     HIGH_AMOUNT_THRESHOLDS,
-    TRANSACTION_WINDOW_DURATION,
     MAX_TRANSACTION_COUNT_IN_WINDOW,
+    TRANSACTION_WINDOW_DURATION,
 )
+from app.schemas.risk import RiskFindingDto, RiskLevel, RiskRuleCode
+from app.schemas.transaction import TransactionDto
 
 
 def check_high_amount(transaction: TransactionDto) -> RiskFindingDto | None:
