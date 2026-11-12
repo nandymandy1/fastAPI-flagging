@@ -25,6 +25,7 @@ def validate_webhook_secret(secret: str) -> None:
         decoded_secret = base64.b64decode(
             encoded_secret + "=" * (-len(encoded_secret) % 4), validate=True
         )
+
     except ValueError as exc:
         raise ValueError("Webhook secret must be valid Base64") from exc
 
@@ -33,9 +34,7 @@ def validate_webhook_secret(secret: str) -> None:
 
 
 def sign_webhook(
-    event: RiskWebhookEventDto,
-    secret: str,
-    timestamp: datetime | None = None,
+    event: RiskWebhookEventDto, secret: str, timestamp: datetime | None = None
 ) -> tuple[bytes, dict[str, str]]:
     """Serialize and sign a validated Standard Webhooks event."""
     if not WEBHOOK_ID_PATTERN.fullmatch(event.event_id):

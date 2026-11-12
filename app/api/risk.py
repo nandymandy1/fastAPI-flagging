@@ -25,9 +25,16 @@ from app.services import IdempotencyStore, RiskAnalysisService, WebhookService
 from app.utils import build_request_hash, load_stored_response
 
 router = APIRouter(prefix="/risk", tags=["Risk Monitor"])
+agentcore_router = APIRouter(tags=["AgentCore"])
 IDEMPOTENCY_KEY_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 
 
+@agentcore_router.post(
+    "/invocations",
+    response_model=RiskAnalysisResponseDto,
+    response_model_exclude_none=True,
+    dependencies=[Depends(require_api_key)],
+)
 @router.post(
     "/analyze",
     response_model=RiskAnalysisResponseDto,

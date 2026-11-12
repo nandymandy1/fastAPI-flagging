@@ -9,6 +9,7 @@ from strands import Agent
 from .config.config import Settings, get_settings
 from .schemas.risk import RiskAnalysisResponseDto
 from .schemas.transaction import AnalyzeTransactionsDto
+
 from .services import (
     IdempotencyStore,
     RiskAnalysisService,
@@ -85,6 +86,7 @@ def get_webhook_service(
 
     try:
         return WebhookService(settings.webhook_url, secret.get_secret_value())
+
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

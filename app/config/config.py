@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+import boto3
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,10 +14,12 @@ class Settings(BaseSettings):
     bedrock_model_id: str | None = None
     bedrock_timeout_seconds: int = 60
     api_key: str | None = None
+    api_key_secret_arn: str | None = None
     dynamodb_table_name: str | None = None
     webhook_enabled: bool = False
     webhook_url: str | None = None
     webhook_signing_secret: SecretStr | None = None
+    webhook_signing_secret_arn: str | None = None
 
     model_config = SettingsConfigDict(
         extra="ignore",
@@ -27,4 +30,27 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+
+    if settings.api_key_secret_arn:
+        settings.api_key = _secret_value(settings.api_key_secret_arn)
+
+    if settings.webhook_signing_secret_arn:
+        settings.webhook_signing_secret = SecretStr(
+            _secret_value(settings.webhook_signing_secret_arn)
+        )
+
+    return settings
+
+
+def _secret_value(secret_arn: str) -> str:
+    value = (
+        boto3.client("secretsmanager")
+        .get_secret_value(SecretId=secret_arn)
+        .get("SecretString")
+    )
+
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError("Runtime secret is unavailable")
+
+    return value

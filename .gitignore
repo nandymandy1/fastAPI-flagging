@@ -19,6 +19,12 @@ __pycache__/
 *.pyc
 .DS_Store
 
+# Terraform local state and provider cache
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/crash.log
+
 graphify-out/
 
 __MACOSX

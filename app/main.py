@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .api import health_router, risk_router
+from .api import agentcore_router, health_router, risk_router
 from .config import get_settings
 from .errors import AppError
 from .utils import error_response, validation_details
@@ -19,6 +19,11 @@ app = FastAPI(
     debug=False,
     title=settings.app_name,
 )
+
+
+@app.get("/ping")
+async def agentcore_ping() -> dict[str, str]:
+    return {"status": "Healthy"}
 
 
 @app.exception_handler(AppError)
@@ -68,3 +73,4 @@ def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
 
 app.include_router(risk_router, prefix=settings.api_prefix)
 app.include_router(health_router, prefix=settings.api_prefix)
+app.include_router(agentcore_router)
