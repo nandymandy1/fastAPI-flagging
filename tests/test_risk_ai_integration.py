@@ -83,9 +83,11 @@ def assessment(transaction_ids: list[str]) -> AiAssessmentDto:
     )
 
 
-def agent_builder(output: AiAssessmentDto) -> tuple[Mock, Mock]:
+def agent_builder(
+    output: AiAssessmentDto, stop_reason: str = "end_turn"
+) -> tuple[Mock, Mock]:
     result = MagicMock()
-    result.stop_reason = "end_turn"
+    result.stop_reason = stop_reason
     result.structured_output = output
     result.metrics.tool_metrics = {
         name: SimpleNamespace(success_count=1, error_count=0)
@@ -108,7 +110,9 @@ def test_explicitly_disabled_ai_preserves_deterministic_response(client):
 
 def test_configured_agent_adds_valid_contextual_observation_by_default(client):
     set_settings("configured-model")
-    builder, agent = agent_builder(assessment(["txn_context_001", "txn_context_002"]))
+    builder, agent = agent_builder(
+        assessment(["txn_context_001", "txn_context_002"]), "tool_use"
+    )
     app.dependency_overrides[get_risk_agent_builder] = lambda: builder
 
     response = client.post("/api/v1/risk/analyze", json=CONTEXT_PAYLOAD)

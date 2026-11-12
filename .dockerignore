@@ -1,0 +1,12 @@
+.aws/
+.env
+.env.*
+.git/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.py[cod]
+tests/
+graphify-out/
+__MACOSX/

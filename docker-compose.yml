@@ -1,0 +1,23 @@
+services:
+  risk-monitor:
+    build: .
+    env_file: .env
+    environment:
+      HOME: /home/appuser
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    volumes:
+      - ${HOME}/.aws:/home/appuser/.aws:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/v1/health/', timeout=2).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

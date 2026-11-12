@@ -1,19 +1,28 @@
+import asyncio
+import base64
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
+from standardwebhooks.webhooks import Webhook
 
 import app.api.risk as risk_api
 from app.dependencies import (
     get_idempotency_store,
     get_risk_agent_builder,
     get_risk_analysis_service,
+    get_webhook_service,
     require_api_key,
 )
 from app.main import app
 from app.schemas.risk import AiAssessmentDto
 from app.services.risk_analysis import RiskAnalysisService
+from app.services.webhook import WebhookService
+
+WEBHOOK_SECRET = "whsec_" + base64.b64encode(b"a" * 32).decode()
+WEBHOOK_URL = "https://webhooks.example.test/risk"
 
 PAYLOAD = {
     "transactions": [
@@ -64,7 +73,7 @@ class FakeStore:
         self.records[key] = reservation
         return reservation
 
-    def complete(self, key, reservation_id, response):
+    def complete(self, key, reservation_id, response, webhook_event=None):
         self.calls.append("complete")
         if self.fail_complete:
             raise RuntimeError("DynamoDB unavailable")
@@ -72,12 +81,40 @@ class FakeStore:
         if record["reservation_id"] != reservation_id:
             raise RuntimeError("Reservation ownership lost")
         record.update(status="COMPLETED", response=response)
+        if webhook_event is not None:
+            record["webhook"] = {
+                "status": "PENDING",
+                "event": webhook_event,
+                "attempts": 0,
+            }
 
     def release(self, key, reservation_id):
         self.calls.append("release")
         record = self.records.get(key)
         if record and record["reservation_id"] == reservation_id:
             del self.records[key]
+
+    def claim_webhook(self, key):
+        record = self.records.get(key)
+        webhook = record and record.get("webhook")
+        if not webhook or webhook["status"] not in {"PENDING", "FAILED"}:
+            return None
+        webhook["status"] = "DELIVERING"
+        webhook["attempts"] += 1
+        webhook["claim_id"] = f"claim-{webhook['attempts']}"
+        return webhook
+
+    def mark_webhook_delivered(self, key, claim_id):
+        webhook = self.records[key]["webhook"]
+        if webhook.get("claim_id") != claim_id:
+            raise RuntimeError("Claim ownership lost")
+        webhook["status"] = "DELIVERED"
+
+    def mark_webhook_failed(self, key, claim_id):
+        webhook = self.records[key]["webhook"]
+        if webhook.get("claim_id") != claim_id:
+            raise RuntimeError("Claim ownership lost")
+        webhook["status"] = "FAILED"
 
 
 @pytest.fixture
@@ -87,6 +124,7 @@ def client_and_store():
     app.dependency_overrides.clear()
     app.dependency_overrides[require_api_key] = lambda: None
     app.dependency_overrides[get_idempotency_store] = lambda: store
+    app.dependency_overrides[get_webhook_service] = lambda: None
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client, store
     app.dependency_overrides.clear()
@@ -101,6 +139,16 @@ def post(client, key="request-1", payload=PAYLOAD):
     )
 
 
+def webhook_service(status_code=200):
+    requests = []
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: requests.append(request) or httpx.Response(status_code)
+        )
+    )
+    return WebhookService(WEBHOOK_URL, WEBHOOK_SECRET, client), requests, client
+
+
 def test_first_request_analyzes_and_persists_response(client_and_store):
     client, store = client_and_store
 
@@ -113,6 +161,7 @@ def test_first_request_analyzes_and_persists_response(client_and_store):
 
 def test_completed_request_replays_without_reanalysis(client_and_store):
     client, store = client_and_store
+    webhook, requests, http_client = webhook_service()
     service = Mock(wraps=RiskAnalysisService())
     result = MagicMock()
     result.stop_reason = "end_turn"
@@ -127,6 +176,7 @@ def test_completed_request_replays_without_reanalysis(client_and_store):
     agent_builder = Mock(return_value=agent)
     app.dependency_overrides[get_risk_analysis_service] = lambda: service
     app.dependency_overrides[get_risk_agent_builder] = lambda: agent_builder
+    app.dependency_overrides[get_webhook_service] = lambda: webhook
 
     first = client.post(
         "/api/v1/risk/analyze?include_ai=true",
@@ -138,12 +188,114 @@ def test_completed_request_replays_without_reanalysis(client_and_store):
         json=PAYLOAD,
         headers={"Idempotency-Key": "request-1"},
     )
+    asyncio.run(http_client.aclose())
 
     assert first.status_code == second.status_code == 200
     assert second.json() == first.json()
     assert service.analyze.call_count == 1
     agent.invoke_async.assert_awaited_once()
     assert store.calls.count("complete") == 1
+    assert store.records["request-1"]["webhook"]["status"] == "DELIVERED"
+    assert len(requests) == 1
+
+
+def test_deterministic_risk_persists_and_delivers_a_signed_webhook(client_and_store):
+    client, store = client_and_store
+    service, requests, http_client = webhook_service()
+    app.dependency_overrides[get_webhook_service] = lambda: service
+
+    response = post(client)
+    asyncio.run(http_client.aclose())
+
+    assert response.status_code == 200
+    assert store.records["request-1"]["webhook"]["status"] == "DELIVERED"
+    assert len(requests) == 1
+    event = Webhook(WEBHOOK_SECRET).verify(
+        requests[0].content, dict(requests[0].headers)
+    )
+    assert event["event_id"] == "event-1"
+    assert event["data"]["findings"][0]["rule_code"] == "HIGH_AMOUNT"
+
+
+def test_ai_only_observation_delivers_an_advisory_webhook(client_and_store):
+    client, store = client_and_store
+    service, requests, http_client = webhook_service()
+    app.dependency_overrides[get_webhook_service] = lambda: service
+    result = MagicMock(
+        stop_reason="end_turn",
+        structured_output=AiAssessmentDto(
+            ai_summary="Related payments require review.",
+            ai_observations=[
+                {
+                    "pattern": "possible_split_payments",
+                    "transaction_ids": ["txn_001", "txn_002"],
+                    "explanation": "Two related near-threshold payments.",
+                    "status": "review",
+                }
+            ],
+        ),
+    )
+    result.metrics.tool_metrics = {
+        name: SimpleNamespace(success_count=1, error_count=0)
+        for name in ("get_verified_risk_findings", "get_validated_transactions")
+    }
+    app.dependency_overrides[get_risk_agent_builder] = lambda: Mock(
+        return_value=Mock(invoke_async=AsyncMock(return_value=result))
+    )
+    payload = {
+        "transactions": [
+            {
+                **PAYLOAD["transactions"][0],
+                "transaction_id": "txn_001",
+                "amount": "4900.00",
+            },
+            {
+                **PAYLOAD["transactions"][0],
+                "transaction_id": "txn_002",
+                "amount": "4900.00",
+            },
+        ]
+    }
+
+    response = post(client, payload=payload)
+    asyncio.run(http_client.aclose())
+
+    assert response.status_code == 200
+    assert response.json()["findings"] == []
+    assert store.records["request-1"]["webhook"]["status"] == "DELIVERED"
+    event = Webhook(WEBHOOK_SECRET).verify(
+        requests[0].content, dict(requests[0].headers)
+    )
+    assert event["data"]["findings"] == []
+    assert event["data"]["ai_observations"][0]["status"] == "review"
+
+
+def test_no_risk_does_not_create_or_send_a_webhook(client_and_store):
+    client, store = client_and_store
+    service, requests, http_client = webhook_service()
+    app.dependency_overrides[get_webhook_service] = lambda: service
+    payload = {"transactions": [{**PAYLOAD["transactions"][0], "amount": "100.00"}]}
+
+    response = post(client, payload=payload)
+    asyncio.run(http_client.aclose())
+
+    assert response.status_code == 200
+    assert "webhook" not in store.records["request-1"]
+    assert requests == []
+
+
+def test_webhook_failure_keeps_completed_analysis_and_marks_failed(client_and_store):
+    client, store = client_and_store
+    service, _, http_client = webhook_service(500)
+    app.dependency_overrides[get_webhook_service] = lambda: service
+
+    response = post(client)
+    asyncio.run(http_client.aclose())
+
+    assert response.status_code == 200
+    assert response.json()["findings"][0]["rule_code"] == "HIGH_AMOUNT"
+    assert store.records["request-1"]["status"] == "COMPLETED"
+    assert store.records["request-1"]["webhook"]["status"] == "FAILED"
 
 
 def test_same_key_with_different_payload_returns_conflict(client_and_store):
