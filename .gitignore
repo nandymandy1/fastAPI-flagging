@@ -18,3 +18,5 @@ __pycache__/
 !.env.example
 *.pyc
 .DS_Store
+
+graphify-out/

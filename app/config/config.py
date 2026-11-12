@@ -1,4 +1,5 @@
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,6 +8,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_prefix: str = "/api/v1"
     app_name: str = "Risk Monitor"
+    aws_region: str = "us-east-1"
+    bedrock_model_id: str | None = None
+    bedrock_timeout_seconds: int = 60
 
     model_config = SettingsConfigDict(
         extra="ignore",

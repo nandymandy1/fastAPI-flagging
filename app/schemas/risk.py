@@ -1,4 +1,6 @@
 from enum import Enum
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -30,3 +32,5 @@ class RiskAnalysisResponseDto(BaseModel):
     status: str
     summary: RiskSummaryDto
     findings: list[RiskFindingDto]
+    ai_summary: str | None = None
+    ai_status: Literal["generated", "unavailable"] | None = None

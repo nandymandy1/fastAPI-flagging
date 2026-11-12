@@ -5,10 +5,10 @@ from decimal import Decimal
 HIGH_AMOUNT_THRESHOLDS = {
     "USD": Decimal("10000.00"),
     "INR": Decimal("1000000.00"),
-    "SGD": Decimal("13000.00"),
+    "SGD": Decimal("15000.00"),
     "AUD": Decimal("15000.00"),
-    "GBP": Decimal("8000.00"),
-    "EUR": Decimal("9000.00"),
+    "GBP": Decimal("10000.00"),
+    "EUR": Decimal("10000.00"),
     "CAD": Decimal("15000.00"),
 }
 
