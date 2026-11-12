@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     bedrock_model_id: str | None = None
     bedrock_timeout_seconds: int = 60
+    api_key: str | None = None
+    dynamodb_table_name: str | None = None
 
     model_config = SettingsConfigDict(
         extra="ignore",

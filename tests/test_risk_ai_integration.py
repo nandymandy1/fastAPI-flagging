@@ -1,11 +1,11 @@
 from types import SimpleNamespace
-from unittest.mock import ANY, MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api import risk as risk_api
 from app.config.config import Settings, get_settings
+from app.dependencies import get_risk_agent_builder, require_api_key
 from app.main import app
 
 PAYLOAD = {
@@ -26,6 +26,7 @@ PAYLOAD = {
 def restore_dependency_overrides():
     overrides = app.dependency_overrides.copy()
     app.dependency_overrides.clear()
+    app.dependency_overrides[require_api_key] = lambda: None
     yield
     app.dependency_overrides.clear()
     app.dependency_overrides.update(overrides)
@@ -43,6 +44,10 @@ def set_settings(model_id: str | None) -> None:
         aws_region="test-region",
         bedrock_model_id=model_id,
     )
+
+
+def set_agent_builder(builder: Mock | None) -> None:
+    app.dependency_overrides[get_risk_agent_builder] = lambda: builder
 
 
 def assert_deterministic_response(data: dict) -> None:
@@ -70,13 +75,14 @@ def mock_agent_result(
         )
     }
     result.__str__.return_value = text
-    agent = Mock(return_value=result)
+    agent = Mock()
+    agent.invoke_async = AsyncMock(return_value=result)
     return Mock(return_value=agent), agent
 
 
-def test_default_request_preserves_the_deterministic_response(client, monkeypatch):
-    factory = Mock()
-    monkeypatch.setattr(risk_api, "create_risk_agent", factory)
+def test_default_request_preserves_the_deterministic_response(client):
+    builder = Mock()
+    set_agent_builder(builder)
 
     response = client.post("/api/v1/risk/analyze", json=PAYLOAD)
 
@@ -84,12 +90,12 @@ def test_default_request_preserves_the_deterministic_response(client, monkeypatc
     assert_deterministic_response(response.json())
     assert "ai_summary" not in response.json()
     assert "ai_status" not in response.json()
-    factory.assert_not_called()
+    builder.assert_not_called()
 
 
-def test_explicitly_disabled_ai_does_not_create_an_agent(client, monkeypatch):
-    factory = Mock()
-    monkeypatch.setattr(risk_api, "create_risk_agent", factory)
+def test_explicitly_disabled_ai_does_not_create_an_agent(client):
+    builder = Mock()
+    set_agent_builder(builder)
 
     response = client.post("/api/v1/risk/analyze?include_ai=false", json=PAYLOAD)
 
@@ -97,13 +103,11 @@ def test_explicitly_disabled_ai_does_not_create_an_agent(client, monkeypatch):
     assert_deterministic_response(response.json())
     assert "ai_summary" not in response.json()
     assert "ai_status" not in response.json()
-    factory.assert_not_called()
+    builder.assert_not_called()
 
 
-def test_missing_model_configuration_returns_deterministic_results(client, monkeypatch):
+def test_missing_model_configuration_returns_deterministic_results(client):
     set_settings(None)
-    factory = Mock()
-    monkeypatch.setattr(risk_api, "create_risk_agent", factory)
 
     response = client.post("/api/v1/risk/analyze?include_ai=true", json=PAYLOAD)
 
@@ -111,13 +115,10 @@ def test_missing_model_configuration_returns_deterministic_results(client, monke
     assert_deterministic_response(response.json())
     assert response.json()["ai_status"] == "unavailable"
     assert "ai_summary" not in response.json()
-    factory.assert_not_called()
 
 
-def test_blank_model_configuration_returns_deterministic_results(client, monkeypatch):
+def test_blank_model_configuration_returns_deterministic_results(client):
     set_settings("   ")
-    factory = Mock()
-    monkeypatch.setattr(risk_api, "create_risk_agent", factory)
 
     response = client.post("/api/v1/risk/analyze?include_ai=true", json=PAYLOAD)
 
@@ -125,13 +126,12 @@ def test_blank_model_configuration_returns_deterministic_results(client, monkeyp
     assert_deterministic_response(response.json())
     assert response.json()["ai_status"] == "unavailable"
     assert "ai_summary" not in response.json()
-    factory.assert_not_called()
 
 
-def test_successful_ai_generation_requires_verified_tool_execution(client, monkeypatch):
+def test_successful_ai_generation_requires_verified_tool_execution(client):
     set_settings("configured-model")
-    factory, agent = mock_agent_result()
-    monkeypatch.setattr(risk_api, "create_risk_agent", factory)
+    builder, agent = mock_agent_result()
+    set_agent_builder(builder)
 
     response = client.post("/api/v1/risk/analyze?include_ai=true", json=PAYLOAD)
 
@@ -139,18 +139,14 @@ def test_successful_ai_generation_requires_verified_tool_execution(client, monke
     assert_deterministic_response(response.json())
     assert response.json()["ai_status"] == "generated"
     assert response.json()["ai_summary"] == "Verified HIGH_AMOUNT finding."
-    factory.assert_called_once_with(
-        analysis=ANY,
-        region_name="test-region",
-        model_id="configured-model",
-    )
-    agent.assert_called_once()
+    builder.assert_called_once()
+    agent.invoke_async.assert_awaited_once()
 
 
-def test_missing_tool_execution_returns_unavailable(client, monkeypatch):
+def test_missing_tool_execution_returns_unavailable(client):
     set_settings("configured-model")
-    factory, _ = mock_agent_result(success_count=0)
-    monkeypatch.setattr(risk_api, "create_risk_agent", factory)
+    builder, _ = mock_agent_result(success_count=0)
+    set_agent_builder(builder)
 
     response = client.post("/api/v1/risk/analyze?include_ai=true", json=PAYLOAD)
 
@@ -160,10 +156,10 @@ def test_missing_tool_execution_returns_unavailable(client, monkeypatch):
     assert "ai_summary" not in response.json()
 
 
-def test_failed_tool_execution_returns_unavailable(client, monkeypatch):
+def test_failed_tool_execution_returns_unavailable(client):
     set_settings("configured-model")
-    factory, _ = mock_agent_result(error_count=1)
-    monkeypatch.setattr(risk_api, "create_risk_agent", factory)
+    builder, _ = mock_agent_result(error_count=1)
+    set_agent_builder(builder)
 
     response = client.post("/api/v1/risk/analyze?include_ai=true", json=PAYLOAD)
 
@@ -173,10 +169,10 @@ def test_failed_tool_execution_returns_unavailable(client, monkeypatch):
     assert "ai_summary" not in response.json()
 
 
-def test_invalid_stop_reason_returns_unavailable(client, monkeypatch):
+def test_invalid_stop_reason_returns_unavailable(client):
     set_settings("configured-model")
-    factory, _ = mock_agent_result(stop_reason="max_tokens")
-    monkeypatch.setattr(risk_api, "create_risk_agent", factory)
+    builder, _ = mock_agent_result(stop_reason="max_tokens")
+    set_agent_builder(builder)
 
     response = client.post("/api/v1/risk/analyze?include_ai=true", json=PAYLOAD)
 
@@ -186,10 +182,10 @@ def test_invalid_stop_reason_returns_unavailable(client, monkeypatch):
     assert "ai_summary" not in response.json()
 
 
-def test_empty_ai_response_returns_unavailable(client, monkeypatch):
+def test_empty_ai_response_returns_unavailable(client):
     set_settings("configured-model")
-    factory, _ = mock_agent_result(text="   ")
-    monkeypatch.setattr(risk_api, "create_risk_agent", factory)
+    builder, _ = mock_agent_result(text="   ")
+    set_agent_builder(builder)
 
     response = client.post("/api/v1/risk/analyze?include_ai=true", json=PAYLOAD)
 
@@ -199,10 +195,10 @@ def test_empty_ai_response_returns_unavailable(client, monkeypatch):
     assert "ai_summary" not in response.json()
 
 
-def test_agent_exception_returns_unavailable_without_details(client, monkeypatch):
+def test_agent_exception_returns_unavailable_without_details(client):
     set_settings("configured-model")
-    factory = Mock(side_effect=RuntimeError("AWS credentials are invalid"))
-    monkeypatch.setattr(risk_api, "create_risk_agent", factory)
+    builder = Mock(side_effect=RuntimeError("AWS credentials are invalid"))
+    set_agent_builder(builder)
 
     response = client.post("/api/v1/risk/analyze?include_ai=true", json=PAYLOAD)
 

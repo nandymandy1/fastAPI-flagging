@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app.dependencies import get_risk_analysis_service
+from app.dependencies import get_risk_analysis_service, require_api_key
 from app.errors import AppError
 from app.main import app
 
@@ -12,6 +12,7 @@ from app.main import app
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides():
     app.dependency_overrides.clear()
+    app.dependency_overrides[require_api_key] = lambda: None
     yield
     app.dependency_overrides.clear()
 

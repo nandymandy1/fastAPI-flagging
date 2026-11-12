@@ -1,15 +1,20 @@
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
 from app.config.config import Settings, get_settings
-from app.dependencies import get_risk_analysis_service
+from app.dependencies import (
+    RiskAgentBuilder,
+    get_risk_agent_builder,
+    get_risk_analysis_service,
+    require_api_key,
+)
 from app.schemas import (
     AnalyzeTransactionsDto,
     RiskAnalysisResponseDto,
 )
 from app.services import RiskAnalysisService
-from app.services.risk_agent import create_risk_agent
 
 router = APIRouter(prefix="/risk", tags=["Risk Monitor"])
 
@@ -18,30 +23,29 @@ router = APIRouter(prefix="/risk", tags=["Risk Monitor"])
     "/analyze",
     response_model=RiskAnalysisResponseDto,
     response_model_exclude_none=True,
+    dependencies=[Depends(require_api_key)],
 )
-def analyze_transactions(
+async def analyze_transactions(
     payload: AnalyzeTransactionsDto,
     service: Annotated[RiskAnalysisService, Depends(get_risk_analysis_service)],
     settings: Annotated[Settings, Depends(get_settings)],
+    agent_builder: Annotated[RiskAgentBuilder | None, Depends(get_risk_agent_builder)],
     include_ai: bool = False,
 ) -> RiskAnalysisResponseDto:
     analysis = service.analyze(payload)
     if not include_ai:
         return analysis
 
-    if not settings.bedrock_model_id or not settings.bedrock_model_id.strip():
+    if agent_builder is None:
         analysis.ai_status = "unavailable"
         return analysis
 
     try:
-        result = create_risk_agent(
-            analysis=analysis,
-            region_name=settings.aws_region,
-            model_id=settings.bedrock_model_id,
-        )(
-            "Call get_verified_risk_findings before briefly explaining the "
-            "verified risk findings."
-        )
+        async with asyncio.timeout(settings.bedrock_timeout_seconds):
+            result = await agent_builder(analysis).invoke_async(
+                "Call get_verified_risk_findings before briefly explaining the "
+                "verified risk findings."
+            )
         tool_metrics = result.metrics.tool_metrics.get("get_verified_risk_findings")
         summary = str(result).strip()
         if (

@@ -1,7 +1,17 @@
+import pytest
 from fastapi.testclient import TestClient
+
+from app.dependencies import require_api_key
 from app.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def bypass_authentication():
+    app.dependency_overrides[require_api_key] = lambda: None
+    yield
+    app.dependency_overrides.pop(require_api_key, None)
 
 
 def test_valid_transaction_batch():
