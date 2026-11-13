@@ -26,6 +26,7 @@ class WebhookService:
             or destination.fragment
         ):
             raise ValueError("Webhook URL must be an HTTPS URL without credentials")
+
         validate_webhook_secret(secret)
 
         self.url = url
@@ -55,6 +56,7 @@ class WebhookService:
                 timeout=5.0,
                 follow_redirects=False,
             )
+
         except httpx.HTTPError as exc:
             raise WebhookDeliveryError("Webhook delivery failed") from exc
 

@@ -20,33 +20,41 @@ class IdempotencyStore:
         now = int(time())
         reservation = {
             "pk": key,
-            "request_hash": request_hash,
             "status": "PROCESSING",
-            "reservation_id": str(uuid4()),
-            "event_id": str(uuid4()),
             "expires_at": now + 600,
+            "event_id": str(uuid4()),
+            "request_hash": request_hash,
+            "reservation_id": str(uuid4()),
         }
+
         try:
             self.table.put_item(
                 Item=reservation,
                 ConditionExpression=Attr("pk").not_exists()
                 | Attr("expires_at").lte(now),
             )
+
         except ClientError as exc:
             if _is_conditional_failure(exc):
                 if self.get(key):
                     return None
+
                 raise IdempotencyStoreError("Idempotency reservation conflict") from exc
+
             raise IdempotencyStoreError("Idempotency storage request failed") from exc
+
         except Exception as exc:
             raise IdempotencyStoreError("Idempotency storage request failed") from exc
+
         return reservation
 
     def get(self, key: str) -> dict | None:
         try:
             item = self.table.get_item(Key={"pk": key}, ConsistentRead=True).get("Item")
+
         except Exception as exc:
             raise IdempotencyStoreError("Idempotency storage request failed") from exc
+
         return item if item and item.get("expires_at", 0) > int(time()) else None
 
     def complete(
@@ -59,6 +67,7 @@ class IdempotencyStore:
         event_id = (
             webhook_event.get("event_id") if isinstance(webhook_event, dict) else None
         )
+
         if webhook_event is not None and (
             not isinstance(event_id, str) or not event_id.strip() or len(event_id) > 128
         ):
@@ -68,16 +77,19 @@ class IdempotencyStore:
         update_expression = (
             "SET #status = :completed, response = :response, expires_at = :expires"
         )
+
         condition = (
             Attr("reservation_id").eq(reservation_id)
             & Attr("status").eq("PROCESSING")
             & Attr("expires_at").gt(now)
         )
+
         values: dict[str, dict[Any, Any] | int | str] = {
             ":completed": "COMPLETED",
             ":response": response,
             ":expires": now + 86400,
         }
+
         if webhook_event is not None:
             update_expression += ", webhook = :webhook"
             condition &= Attr("event_id").eq(event_id)
@@ -95,6 +107,7 @@ class IdempotencyStore:
                 ExpressionAttributeNames={"#status": "status"},
                 ExpressionAttributeValues=values,
             )
+
         except Exception as exc:
             raise IdempotencyStoreError("Idempotency completion failed") from exc
 
@@ -107,6 +120,7 @@ class IdempotencyStore:
                     & Attr("status").eq("PROCESSING")
                 ),
             )
+
         except Exception as exc:
             raise IdempotencyStoreError("Idempotency release failed") from exc
 
@@ -117,6 +131,7 @@ class IdempotencyStore:
             Attr("webhook.status").eq("DELIVERING")
             & Attr("webhook.claim_expires_at").lte(now)
         )
+
         try:
             result = self.table.update_item(
                 Key={"pk": key},
@@ -141,14 +156,17 @@ class IdempotencyStore:
                 },
                 ReturnValues="ALL_NEW",
             )
+
         except ClientError as exc:
             if _is_conditional_failure(exc):
                 return None
             raise IdempotencyStoreError("Webhook claim failed") from exc
+
         except Exception as exc:
             raise IdempotencyStoreError("Webhook claim failed") from exc
 
         webhook = result.get("Attributes", {}).get("webhook")
+
         if not isinstance(webhook, dict):
             raise IdempotencyStoreError("Webhook claim failed")
         return webhook

@@ -23,18 +23,21 @@ def error_response(
 
 
 def validation_field(location: tuple[object, ...]) -> str:
-    parts = location[1:] if location and location[0] == "body" else location
     field = ""
+    parts = location[1:] if location and location[0] == "body" else location
+
     for part in parts:
         if isinstance(part, int):
             field += f"[{part}]"
         else:
             field += f".{part}" if field else str(part)
+
     return field or "request"
 
 
 def validation_details(exc: RequestValidationError) -> list[dict[str, str]]:
     details = []
+
     for error in exc.errors():
         error_type = str(error["type"])
         code = error_type.upper()
@@ -46,4 +49,5 @@ def validation_details(exc: RequestValidationError) -> list[dict[str, str]]:
                 "message": message,
             }
         )
+
     return details

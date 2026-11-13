@@ -9,7 +9,6 @@ class RiskWebhookDataDto(BaseModel):
     summary: RiskSummaryDto
     findings: list[RiskFindingDto] = Field(default_factory=list)
     ai_observations: list[AiObservationDto] = Field(default_factory=list)
-
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")

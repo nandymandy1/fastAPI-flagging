@@ -33,6 +33,7 @@ class TransactionDto(BaseModel):
     def validate_timestamp(cls, value: datetime):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Timestamp must include timezone information")
+
         return value
 
     @field_validator("currency")
@@ -61,4 +62,5 @@ class AnalyzeTransactionsDto(BaseModel):
                 "DUPLICATE_TRANSACTION_ID",
                 "Transaction IDs must be unique",
             )
+
         return transactions

@@ -24,9 +24,10 @@ from app.schemas.webhook import RiskWebhookDataDto, RiskWebhookEventDto
 from app.services import IdempotencyStore, RiskAnalysisService, WebhookService
 from app.utils import build_request_hash, load_stored_response
 
+IDEMPOTENCY_KEY_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
 router = APIRouter(prefix="/risk", tags=["Risk Monitor"])
 agentcore_router = APIRouter(tags=["AgentCore"])
-IDEMPOTENCY_KEY_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 
 
 @agentcore_router.post(
@@ -43,15 +44,15 @@ IDEMPOTENCY_KEY_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 )
 async def analyze_transactions(
     payload: AnalyzeTransactionsDto,
-    service: Annotated[RiskAnalysisService, Depends(get_risk_analysis_service)],
     settings: Annotated[Settings, Depends(get_settings)],
+    service: Annotated[RiskAnalysisService, Depends(get_risk_analysis_service)],
     agent_builder: Annotated[RiskAgentBuilder | None, Depends(get_risk_agent_builder)],
     idempotency_store: Annotated[
         IdempotencyStore | None, Depends(get_idempotency_store)
     ],
     webhook_service: Annotated[WebhookService | None, Depends(get_webhook_service)],
-    include_ai: bool | None = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    include_ai: bool | None = None,
 ) -> RiskAnalysisResponseDto:
     if not idempotency_key or not IDEMPOTENCY_KEY_PATTERN.fullmatch(idempotency_key):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
@@ -64,6 +65,7 @@ async def analyze_transactions(
 
     try:
         existing = await asyncio.to_thread(idempotency_store.get, idempotency_key)
+
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE) from exc
 
@@ -87,9 +89,8 @@ async def analyze_transactions(
             if existing:
                 stored_response = load_stored_response(existing, request_hash)
                 if webhook_service is not None:
-                    await _deliver_webhook(
-                        idempotency_store, idempotency_key, webhook_service
-                    )
+                    await _deliver_webhook(idempotency_store, idempotency_key, webhook_service)
+
                 return stored_response
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
@@ -114,6 +115,7 @@ async def analyze_transactions(
         raise
 
     response = analysis.model_dump(mode="json", exclude_none=True)
+
     webhook_event = (
         _webhook_event(analysis, reservation["event_id"])
         if webhook_service is not None
@@ -136,6 +138,7 @@ async def analyze_transactions(
                 response,
                 webhook_event.model_dump(mode="json"),
             )
+
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE) from exc
 
@@ -172,8 +175,10 @@ async def _deliver_webhook(
 ) -> None:
     try:
         claimed = await asyncio.to_thread(store.claim_webhook, key)
+
     except Exception:  # noqa: BLE001 - webhook delivery is non-critical
         return
+
     if not claimed:
         return
 
@@ -207,12 +212,12 @@ async def _add_ai_assessment(
                 "Call both tools, then provide an advisory contextual assessment."
             )
 
+        assessment = result.structured_output
         findings_metrics = result.metrics.tool_metrics.get("get_verified_risk_findings")
         transactions_metrics = result.metrics.tool_metrics.get(
             "get_validated_transactions"
         )
 
-        assessment = result.structured_output
         valid_transaction_ids = {
             transaction.transaction_id for transaction in payload.transactions
         }

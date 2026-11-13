@@ -41,11 +41,11 @@ class AiObservationPattern(str, Enum):
 
 class AiObservationDto(BaseModel):
     pattern: AiObservationPattern
+    status: Literal["advisory", "review"]
     transaction_ids: list[AiTransactionId] = Field(min_length=1, max_length=10)
     explanation: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
     ]
-    status: Literal["advisory", "review"]
 
     model_config = ConfigDict(extra="forbid")
 
@@ -54,6 +54,7 @@ class AiObservationDto(BaseModel):
     def validate_unique_transaction_ids(cls, transaction_ids: list[str]) -> list[str]:
         if len(transaction_ids) != len(set(transaction_ids)):
             raise ValueError("Observation transaction IDs must be unique")
+
         return transaction_ids
 
 
@@ -61,9 +62,9 @@ class AiAssessmentDto(BaseModel):
     ai_summary: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)
     ]
+    model_config = ConfigDict(extra="forbid")
     ai_observations: list[AiObservationDto] = Field(max_length=5)
 
-    model_config = ConfigDict(extra="forbid")
 
 
 class RiskAnalysisResponseDto(BaseModel):
